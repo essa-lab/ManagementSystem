@@ -1,12 +1,12 @@
 <?php
 
 namespace App\Http\Controllers\Admin\Resource;
+
 use App\Action\GetResourcesAction;
 use App\Helper\ApiResponse;
 use App\Helper\Authorize;
 use App\Helper\Logger;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Resource\AuthorStoreRequest;
 use App\Http\Requests\Resource\CuratorStoreRequest;
 use App\Http\Requests\Resource\EditorStoreRequst;
 use App\Http\Requests\Resource\MediaStoreRequest;
@@ -61,8 +61,6 @@ class ResourceController extends Controller
         $resources = $action->execute($request);
 
         return ApiResponse::sendPaginatedResponse(new PaginatingResource($resources, ResourceResource::class));
-
-
     }
 
     /**
@@ -157,13 +155,11 @@ class ResourceController extends Controller
             $resource->update($data);
             DB::commit();
             return ApiResponse::sendResponse(__('messages.resource_update'), new ResourceResource($resource));
-
         } catch (\Exception $e) {
             Logger::log('Error Creating new resource : ' . $e->getMessage());
             DB::rollBack();
 
             return ApiResponse::sendError(__('messages.resource_update_error'));
-
         }
     }
 
@@ -263,141 +259,39 @@ class ResourceController extends Controller
             ->groupBy('library_id')
             ->get();
 
-        return ApiResponse::sendResponse('success', $resourceCounts);   
-     }
+        return ApiResponse::sendResponse('success', $resourceCounts);
+    }
 
     public function resourceCountPerSubject()
     {
         $user = Auth::user();
 
-        
 
 
-$libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), function () use ($user) {
-    return Library::query()
-        ->when(!Authorize::isSuperAdmin($user), function ($query) use ($user) {
-            $query->where('id', $user->library_id);
-        })
-        ->with(['resources.subjects'])
-        ->get()
-        ->map(function ($library) {
-            return [
-                'library' => new LibraryResource($library),
-                'subjects' => $library->resources->flatMap->subjects
-                    ->groupBy('id')
-                    ->map(fn ($subjects) => [
-                        'subject' => new SubjectResource($subjects->first()),
-                        'total_resources' => count($subjects)
-                    ])
-                    ->values()
-            ];
+
+        $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), function () use ($user) {
+            return Library::query()
+                ->when(!Authorize::isSuperAdmin($user), function ($query) use ($user) {
+                    $query->where('id', $user->library_id);
+                })
+                ->with(['resources.subjects'])
+                ->get()
+                ->map(function ($library) {
+                    return [
+                        'library' => new LibraryResource($library),
+                        'subjects' => $library->resources->flatMap->subjects
+                            ->groupBy('id')
+                            ->map(fn($subjects) => [
+                                'subject' => new SubjectResource($subjects->first()),
+                                'total_resources' => count($subjects)
+                            ])
+                            ->values()
+                    ];
+                });
         });
-});
 
         return ApiResponse::sendResponse('success', $libraries);
     }
-
-    // public function storeCurator(CuratorStoreRequest $request, string $resourceId)
-    // {
-    //     $data = $request->validated();
-    //     // Authorize::hasPermission(Auth::user(),'RESOURCES',$data['library_id']);
-    //     try {
-    //         $resource = Resource::find($resourceId);
-    //         if (!$resource) {
-    //             return ApiResponse::sendError(__('messages.resource_not_found'));
-    //         }
-    //         if (empty($data)) {
-    //             $resource->curators()?->where('type', '!=', 'author')->delete();
-    //         }
-    //         DB::beginTransaction();
-    //         foreach ($data as $curator) {
-    //             $resource->curators()?->where('type', $curator['type'])->delete();
-    //         }
-    //         $curators = array_map(fn($curator) => [
-    //             'name_ar' => $curator['name_ar'] ?? null,
-    //             'name_ku' => $curator['name_ku'] ?? null,
-    //             'name_en' => $curator['name_en'] ?? null,
-    //             'type' => $curator['type'],
-    //             'resource_id' => $resource->id,
-    //         ], $data);
-
-    //         $createdCurators = $resource->curators()->createMany($curators);
-
-    //         if ($resource->resourceable_type == Research::class || $resource->resourceable_type == Article::class) {
-
-    //             foreach ($createdCurators as $index => $curator) {
-    //                 if (!empty($data[$index]['education_level'])) {
-    //                     $curator->education()?->delete();
-    //                     $curator->education()->create($data[$index]['education_level']);
-    //                 }
-    //             }
-    //         }
-    //         DB::commit();
-    //         return ApiResponse::sendResponse(__('messages.resource_update'), $data);
-    //     } catch (\Exception $e) {
-    //         Logger::log('Error Creating new resource : ' . $e->getMessage());
-    //         DB::rollBack();
-    //         return ApiResponse::sendError(__('messages.resource_update_error'));
-    //     }
-    // }
-    // public function storeAuthor(AuthorStoreRequest $request, string $resourceId)
-    // {
-    //     $data = $request->validated();
-    //     // Authorize::hasPermission(Auth::user(),'RESOURCES',$data['library_id']);
-    //     try {
-    //         $resource = Resource::find($resourceId);
-    //         if (!$resource) {
-    //             return ApiResponse::sendError(__('messages.resource_not_found'));
-    //         }
-    //         DB::beginTransaction();
-
-    //         $existingCurators = $resource->curators()->get()->keyBy('id');
-
-    //         $curatorsToInsert = [];
-
-    //         foreach ($data as $curatorData) {
-    //             $curatorId = $curatorData['id'] ?? null; 
-
-    //             $curatorFields = [
-    //                 'name_ar' => $curatorData['name_ar'] ?? null,
-    //                 'name_ku' => $curatorData['name_ku'] ?? null,
-    //                 'name_en' => $curatorData['name_en'] ?? null,
-    //                 'type' => $curatorData['type'],
-    //                 'resource_id' => $resource->id,
-    //             ];
-    //             if ($curatorId && isset($existingCurators[$curatorId])) {
-    //                 $existingCurators[$curatorId]->update($curatorFields);
-    //             } else {
-    //                 $curatorsToInsert[] = $curatorFields;
-    //             }
-    //         }
-
-    //         if (!empty($curatorsToInsert)) {
-    //             $resource->curators()->insert($curatorsToInsert);
-    //         }
-
-    //         if ($resource->resourceable_type == Research::class || $resource->resourceable_type == Article::class) {
-    //             foreach ($data as $curatorData) {
-    //                 if (!empty($curatorData['id']) && !empty($curatorData['education_level'])) {
-    //                     $curator = $resource->curators()->find($curatorData['id']);
-    //                     if ($curator) {
-    //                         $curator->education()?->updateOrCreate([], $curatorData['education_level']);
-    //                     }
-    //                 }
-    //             }
-    //         }
-
-    //         DB::commit();
-
-    //         return ApiResponse::sendResponse(__('messages.resource_update'), $data);
-    //     } catch (\Exception $e) {
-    //         Logger::log('Error Creating new resource : ' . $e->getMessage());
-    //         DB::rollBack();
-    //         return ApiResponse::sendError(__('messages.resource_update_error'));
-    //     }
-    // }
-
-
 
     public function storeCurators(CuratorStoreRequest $request, string $resourceId)
     {
@@ -432,11 +326,11 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
             }
             if (!empty($curatorsToInsert)) {
                 $resource->curators()->insert($curatorsToInsert);
-            
-                $resource->load('curators'); 
+
+                $resource->load('curators');
                 $insertedCurators = $resource->curators;
             }
-            
+
             if ($resource->resourceable_type == Research::class || $resource->resourceable_type == Article::class) {
                 foreach ($data as $curatorData) {
                     if (isset($curatorData['id']) && isset($curatorData['education_level'])) {
@@ -448,10 +342,10 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
                     } elseif (isset($curatorData['education_level'])) {
                         $newCurator = $insertedCurators->first(function ($curator) use ($curatorData) {
                             return ($curator->name_ar === ($curatorData['name_ar'] ?? null)) ||
-                                   ($curator->name_ku === ($curatorData['name_ku'] ?? null)) ||
-                                   ($curator->name_en === ($curatorData['name_en'] ?? null));
+                                ($curator->name_ku === ($curatorData['name_ku'] ?? null)) ||
+                                ($curator->name_en === ($curatorData['name_en'] ?? null));
                         });
-            
+
                         if ($newCurator) {
                             $newCurator->education()->create($curatorData['education_level']);
                         }
@@ -478,7 +372,6 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
         }
         $curator->delete();
         return ApiResponse::sendResponse(__('messages.curator_delete'));
-
     }
 
     public function storeMedia(MediaStoreRequest $request, string $resourceId)
@@ -534,37 +427,7 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
         }
         $meida->delete();
         return ApiResponse::sendResponse(__('messages.meida_delete'));
-
     }
-
-
-    // public function storeMedia(MediaStoreRequest $request, string $resourceId)
-    // {
-
-    //     $data = $request->validated();
-    //     try {
-    //         $resource = Resource::find($resourceId);
-    //         if (!$resource) {
-    //             return ApiResponse::sendError(__('messages.resource_not_found'));
-    //         }
-    //         DB::beginTransaction();
-    //         foreach ($data as $media) {
-    //             $resource->medias()?->where('type', $media['type'])->delete();
-    //         }
-    //         foreach ($data as $media) {
-    //             $media['resource_id'] = $resource->id;
-    //             $resource->medias()->create($media);
-    //         }
-    //         DB::commit();
-    //         return ApiResponse::sendResponse(__('messages.resource_update'), $data);
-    //     } catch (\Exception $e) {
-    //         Logger::log('Error Creating new resource : ' . $e->getMessage());
-    //         DB::rollBack();
-    //         return ApiResponse::sendError(__('messages.resource_update_error'));
-    //     }
-
-    // }
-
 
     public function storeSubject(StoreSubjectRequest $request, string $resourceId)
     {
@@ -625,9 +488,6 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
             }
             DB::beginTransaction();
 
-            // foreach ($data as $editor) {
-            //     $resource->editors()?->where('type', $editor['type'])->delete();
-            // }
 
             foreach ($data as $editor) {
                 $resource->editors()->updateOrCreate([
@@ -644,7 +504,6 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
             DB::rollBack();
             return ApiResponse::sendError(__('messages.resource_update_error'));
         }
-
     }
 
     public function viewResources(ViewResourcesRequest $request)
@@ -664,8 +523,7 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
             ])
             ->paginate($data['limit'] ?? 10);
 
-            return ApiResponse::sendPaginatedResponse(new PaginatingResource($resources, ResourceOverviewResource::class));
-
+        return ApiResponse::sendPaginatedResponse(new PaginatingResource($resources, ResourceOverviewResource::class));
     }
 
     public function topTen(TopTenRequest $request)
@@ -689,8 +547,5 @@ $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), 
             ->get();
 
         return ApiResponse::sendResponse(__('messages.resource_update'), $circulations);
-
     }
-
-
 }

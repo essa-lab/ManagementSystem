@@ -1,37 +1,22 @@
 <?php
 
 use App\Http\Controllers\Auth\JWTPatronAuthController;
-use App\Http\Controllers\Auth\JWTUserAuthController;
 use App\Http\Controllers\Auth\PatronPasswordResetController;
-use App\Http\Controllers\Auth\UserPasswordResetController;
 use App\Http\Middleware\LocalizationMiddleware;
-use App\Http\Middleware\VerifiedMiddleware;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Patron\PatronController;
+use App\Http\Controllers\Admin\Circulation\CirculationController;
+use App\Http\Controllers\Admin\Resource\ReviewController;
+use App\Http\Controllers\FileController;
 
-Route::prefix('user-auth')->middleware([LocalizationMiddleware::class,'throttle:3,1'])->group(function () {
-    Route::post('login', [JWTUserAuthController::class, 'login']);
-    Route::post('forgot-password', [UserPasswordResetController::class, 'forgotPassword']);
-    Route::post('refresh', [JWTUserAuthController::class, 'refreshTokens']);
-});
 
-Route::prefix('staff')->middleware([LocalizationMiddleware::class,'throttle:3,1'])->group(function () {
-    Route::post('reset-password', [UserPasswordResetController::class, 'resetPassword']);
-});
-
-Route::prefix('user-auth')->middleware(['jwt.user', LocalizationMiddleware::class])->group(function () {
-    Route::get('self', [JWTUserAuthController::class, 'getUser']);
-    Route::post('logout', [JWTUserAuthController::class, 'logout']);
-    Route::post('update-password', [JWTUserAuthController::class, 'updatePasswordUser']);
-
-});
-
+// -------------- Patron Auth Routes -------------- //
 // re enable throttle here
 Route::prefix('patron-auth')->middleware([LocalizationMiddleware::class])->group(function () {
     Route::post('login', [JWTPatronAuthController::class, 'login']);
     Route::Post('register', [JWTPatronAuthController::class, 'register']);
     Route::post('forgot-password', [PatronPasswordResetController::class, 'forgotPassword']);
     Route::post('refresh', [JWTPatronAuthController::class, 'refreshTokens']);
-    // Route::get('activate-account/{token}',[JWTPatronAuthController::class,'activateAccount']);
 });
 
 
@@ -39,7 +24,6 @@ Route::prefix('patron-auth')->middleware([LocalizationMiddleware::class])->group
 Route::prefix('patron-auth')->group(function () {
     Route::get('activate-account/{token}',[PatronPasswordResetController::class,'activateAccount']);
 
-    // Route::Post('register', [JWTPatronAuthController::class, 'register']);
 });
 
 // re enable throttle here
@@ -55,7 +39,6 @@ Route::prefix('patron-auth')->middleware(['jwt.patron', LocalizationMiddleware::
 });
 
 // re enable throttle here
-
 Route::prefix('patron-auth')
     ->middleware(['jwt.patron', LocalizationMiddleware::class, 'verified'])
     ->group(function () {
@@ -65,3 +48,32 @@ Route::prefix('patron-auth')
         Route::post('update-email', [JWTPatronAuthController::class, 'updateEmail']);
         Route::post('request-update-password', [JWTPatronAuthController::class, 'requestUpdatePassword']);
     });
+// ---------- End Patron Auth Routes ---------- //
+
+// ---------- Patron Routes ---------- //
+Route::middleware(['jwt.patron', LocalizationMiddleware::class])->group(function () {
+
+    // Book Routes
+    Route::get('/resource-counts',[PatronController::class,'resourceCount']);
+    Route::get('/library-list',[PatronController::class,'libraryList']);
+
+});
+Route::middleware(['jwt.patron','verified', LocalizationMiddleware::class])->group(function () {
+
+    Route::post('/request-resource',[CirculationController::class,'requestResource']);
+    Route::post('/renew-resource',[CirculationController::class,'renewResource']);
+    Route::get('/patron-circulation',[CirculationController::class,'circulationPatronLog']);
+
+    Route::post('/review-resource',[ReviewController::class,'store']);
+    Route::put('/review-resource/{id}',[ReviewController::class,'update']);
+    Route::delete('/review-resource/{id}',[ReviewController::class,'delete']);
+    Route::get('/my-review',[ReviewController::class,'show']);
+    Route::get('/review/{id}',[ReviewController::class,'getOneReview']);
+
+    Route::get('/check-penalty',[CirculationController::class,'checkPenalty']);
+    
+    Route::post('image/upload', [FileController::class,'uploadFile']);
+
+
+});
+

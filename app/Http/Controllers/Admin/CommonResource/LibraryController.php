@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin\Resource;
+namespace App\Http\Controllers\Admin\CommonResource;
 use App\Helper\ApiResponse;
 use App\Helper\Authorize;
 use App\Helper\Logger;
@@ -47,6 +47,7 @@ class LibraryController extends Controller
         }
         $library->orderBy($request->get('sortBy','id'),$request->get('sortOrder','asc'));
         $library = $library->paginate($request->get('limit',10));
+
         return ApiResponse::sendPaginatedResponse(new PaginatingResource($library,LibraryResource::class));       
     }
     /**

@@ -41,9 +41,7 @@ class ResourceSettingController extends Controller
      */
     public function update(StoreResourceSettingRequest $request, int $id)
     {
-        // if(!Authorize::isSuperAdmin(Auth::user())){
-        //     return ApiResponse::sendError(__('messages.not_authorized'));
-        // }
+
         $data = $request->validated();
         try{
 

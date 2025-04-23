@@ -281,10 +281,6 @@ class BookController extends Controller
             'resourceable.printInformation.conditions',
             'resourceable.printInformation.type',
         ]);
-        // $book['related_resources'] = $book->relatedBySubject();
-        
-
-
 
         return ApiResponse::sendResponse(__('messages.get_book'), new ResourceResource($book));
     }

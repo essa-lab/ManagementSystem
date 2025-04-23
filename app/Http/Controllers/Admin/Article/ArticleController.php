@@ -57,9 +57,6 @@ class ArticleController extends Controller
         return ApiResponse::sendPaginatedResponse(new PaginatingResource($article, ResourceResource::class));
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(ArticleStoreRequest $request)
     {
         $data = $request->validated();
@@ -81,35 +78,7 @@ class ArticleController extends Controller
 
         }
     }
-    // public function storeKeywords(ArticleKeywordRequest $request, string $articleId)
-    // {
-    //     $data = $request->validated();
-    //     try {
-    //         $article = Article::find($articleId);
-    //         if (!$article) {
-    //             return ApiResponse::sendError(__('messages.article_not_found'));
-    //         }
-
-    //         $articleKeywords = array_map(function ($relation) use ($article) {
-    //             return [
-    //                 'title_ar' => $relation['title_ar'] ?? null,
-    //                 'title_ku' => $relation['title_ku'] ?? null,
-    //                 'title_en' => $relation['title_en'] ?? null,
-    //                 'article_id' => $article->id,
-    //             ];
-    //         }, $data);
-    //         $article->articleKeyword()?->delete();
-    //         $article->articleKeyword()->insert($articleKeywords);
-
-    //         return ApiResponse::sendResponse(__('messages.article_create'), $articleKeywords);
-
-    //     } catch (\Exception $e) {
-    //         Logger::log('Error Creating new article : ' . $e->getMessage());
-
-    //         return ApiResponse::sendError(__('messages.article_create_error'));
-
-    //     }
-    // }
+   
 
     public function storeKeywords(ArticleKeywordRequest $request, string $articleId)
     {

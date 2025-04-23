@@ -2,6 +2,7 @@
 
 namespace App\Helper;
 
+use Illuminate\Contracts\Pagination\Paginator;
 
 class ApiResponse 
 {

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Admin\Resource;
 use App\Helper\ApiResponse;
-use App\Helper\Authorize;
 use App\Helper\GenerateBarcode;
 use App\Helper\Logger;
 use App\Http\Controllers\Controller;
@@ -15,10 +14,6 @@ use App\Http\Resources\Resource\ResourceResource;
 use App\Models\Resource\Resource;
 use App\Models\Resource\ResourceCopy;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Support\Facades\Auth;
-use Milon\Barcode\DNS1D;
-use Milon\Barcode\Facades\DNS1DFacade;
-
 
 class ResourceCopyController extends Controller
 {
@@ -102,10 +97,6 @@ class ResourceCopyController extends Controller
      */
     public function update(ResourceCopyUpdateRequest $request, string $id)
     {
-        // if(!Authorize::isSuperAdmin(Auth::user())){
-        //     return ApiResponse::sendError(__('messages.not_authorized'));
-        // }
-
 
         $data = $request->validated();
         try{
@@ -159,9 +150,7 @@ class ResourceCopyController extends Controller
      */
     public function destroy(string $id)
     {
-        // if(!Authorize::isSuperAdmin(Auth::user())){
-        //     return ApiResponse::sendError(__('messages.not_authorized'));
-        // }
+
         $resourceCopy = ResourceCopy::find($id);
          if(!$resourceCopy){
             return ApiResponse::sendError(__('messages.resourceCopy_not_found'));

@@ -60,13 +60,12 @@ class OrderController extends Controller
             $data['status'] = 'pending';
             $data['po_number'] = uniqid("PO_");
 
-        $order =Order::create($data);
+            $order =Order::create($data);
 
             OrderLog::create([
                 'purchase_order_id'=>$order->id,
-        'changed_by'=>$user->id,
-        
-        'status'=>'pending'
+                'changed_by'=>$user->id,
+                'status'=>'pending'
             ]);
 
         return ApiResponse::sendResponse(__('messages.order_create'),new OrderResource($order));
@@ -113,9 +112,8 @@ class OrderController extends Controller
 
         OrderLog::create([
             'purchase_order_id'=>$order->id,
-    'changed_by'=>$user->id,
-    
-    'status'=>$request->get('status')
+            'changed_by'=>$user->id,
+            'status'=>$request->get('status')
         ]);
 
 
@@ -140,7 +138,6 @@ class OrderController extends Controller
             $order->orderItems()->create([
                 'title' => $itemData['title'],
                 'type' => $itemData['type'],
-
                 'author' => $itemData['author'] ?? null,
                 'isbn' => $itemData['isbn'] ?? null,
                 'quantity' => $itemData['quantity'],
@@ -164,41 +161,4 @@ class OrderController extends Controller
         }
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    // public function update(SubjectStoreRequest $request, string $id)
-    // {
-    //     if(!Authorize::isSuperAdmin(Auth::user())){
-    //         return ApiResponse::sendError(__('messages.not_authorized'));
-    //     }
-    //     $data = $request->validated();
-    //     try{
-
-    //         $subject =Subject::findOrFail($id);
-    //         $subject->update($data);
-    //     return ApiResponse::sendResponse(__('messages.subject_update'));
-        
-    //     }catch(\Exception $e){
-    //         Logger::log('Error updating subject : '.$e->getMessage());
-
-    //         return ApiResponse::sendError(__('messages.subject_update_error'));
-    //     }
-    // }
-
-    // /**
-    //  * Remove the specified resource from storage.
-    //  */
-    // public function destroy(string $id)
-    // {
-    //     if(!Authorize::isSuperAdmin(Auth::user())){
-    //         return ApiResponse::sendError(__('messages.not_authorized'));
-    //     }
-    //     $subject = Subject::find($id);
-    //      if(!$subject){
-    //         return ApiResponse::sendError(__('messages.subject_not_found'));
-    //      }
-    //      $subject->delete();
-    //      return ApiResponse::sendResponse(__('messages.subject_delete'));
-    //     }
 }

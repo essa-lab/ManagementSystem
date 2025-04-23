@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin\Resource;
+namespace App\Http\Controllers\Admin\Circulation;
 
 use App\Helper\ApiResponse;
 use App\Helper\Authorize;

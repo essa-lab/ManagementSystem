@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Admin\Resource;
+namespace App\Http\Controllers\Admin\Circulation;
 
 use App\Commands\RenewResourceCommand;
 use App\Commands\RequestResourceCommand;
@@ -26,7 +26,6 @@ use App\Models\Library;
 use App\Models\Resource\Circulation;
 use App\Models\Resource\CirculationLog;
 use App\Models\Resource\PenaltyWaiver;
-use App\Models\Resource\Resource;
 use App\Models\Resource\ResourceCopy;
 use App\Models\Resource\ResourceSetting;
 use App\Queries\GetPatronCirculationsQuery;

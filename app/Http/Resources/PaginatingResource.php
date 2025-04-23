@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Pagination\AbstractPaginator;
 
@@ -12,10 +13,10 @@ class PaginatingResource extends ResourceCollection
     /**
      * PaginatingResource constructor.
      * 
-     * @param AbstractPaginator $resource
+     * @param Paginator $resource
      * @param string $resourceClass
      */
-    public function __construct(AbstractPaginator $resource, string $resourceClass)
+    public function __construct(Paginator $resource, string $resourceClass)
     {
         parent::__construct($resource);
         $this->resourceClass = $resourceClass;
