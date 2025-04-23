@@ -14,20 +14,15 @@ use App\Http\Requests\Resource\ResourcePaginationRequest;
 use App\Http\Requests\Resource\ResourceStoreRequest;
 use App\Http\Requests\Resource\StoreSourceRequest;
 use App\Http\Requests\Resource\StoreSubjectRequest;
-use App\Http\Requests\Resource\TopTenRequest;
 use App\Http\Requests\Resource\ViewResourcesRequest;
-use App\Http\Resources\LibraryResource;
 use App\Http\Resources\PaginatingResource;
-use App\Http\Resources\Resource\LanguageResource;
 use App\Http\Resources\Resource\ResourceOverviewResource;
 use App\Http\Resources\Resource\ResourceResource;
-use App\Http\Resources\Resource\SubjectResource;
+use App\Http\Services\ResourceService;
 use App\Models\Article\Article;
 use App\Models\Book\Book;
 use App\Models\DigitalResource\DigitalResource;
-use App\Models\Library;
 use App\Models\Research\Research;
-use App\Models\Resource\Circulation;
 use App\Models\Resource\Curator;
 use App\Models\Resource\Media;
 use App\Models\Resource\Resource;
@@ -35,7 +30,6 @@ use App\Models\Resource\ResourceCopy;
 use App\Models\Resource\ResourceSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -176,127 +170,10 @@ class ResourceController extends Controller
         return ApiResponse::sendResponse(__('messages.resource_delete'));
     }
 
-    public function resourceCountPerLibraryAndLanguage()
-    {
-        $user = Auth::user();
-        $libraryId = null;
-        if (!Authorize::isSuperAdmin($user)) {
-            $libraryId = $user->library_id;
-        }
 
-        $resourceCounts = Resource::query();
-
-        if (isset($libraryId)) {
-            $resourceCounts->where('library_id', $libraryId);
-        }
-
-        $resourceCounts = $resourceCounts->select('library_id', 'language_id')
-            ->with(['library', 'language'])
-            ->selectRaw("
-            SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as book_count,
-            SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as article_count,
-            SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as research_count,
-            SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as digital_count,
-            SUM(
-                CASE WHEN resourceable_type IN (?, ?, ?, ?) THEN 1 ELSE 0 END
-            ) as total_count
-        ", [
-                'App\Models\Book\Book',
-                'App\Models\Article\Article',
-                'App\Models\Research\Research',
-                'App\Models\DigitalResource\DigitalResource',
-                'App\Models\Book\Book',
-                'App\Models\Article\Article',
-                'App\Models\Research\Research',
-                'App\Models\DigitalResource\DigitalResource'
-            ])
-            ->groupBy('library_id', 'language_id')
-            ->get()
-            ->groupBy('library_id')
-            ->map(function ($items, $libraryId) {
-                return [
-                    'library_id' => $libraryId,
-                    'library' => new LibraryResource($items->first()->library),
-                    'details' => $items->map(function ($item) {
-                        return [
-                            'language_id' => $item->language_id,
-                            'language' => new LanguageResource($item->language),
-                            'book_count' => (int) $item->book_count,
-                            'article_count' => (int) $item->article_count,
-                            'research_count' => (int) $item->research_count,
-                            'digital_count' => (int) $item->digital_count,
-                            'total_count' => (int) $item->total_count,
-                        ];
-                    })->values()
-                ];
-            })->values();
-
-
-
-        return ApiResponse::sendResponse('success', $resourceCounts);
-    }
-
-    public function resourceCountPerLibrary()
-    {
-        $user = Auth::user();
-        $libraryId = null;
-        if (!Authorize::isSuperAdmin($user)) {
-            $libraryId = $user->library_id;
-        }
-
-        $resourceCounts = Resource::query();
-
-        if (isset($libraryId)) {
-            $resourceCounts->where('library_id', $libraryId);
-        }
-
-        $resourceCounts = $resourceCounts->select('library_id')
-            ->with(['library'])
-            ->selectRaw("SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as book_count", ['App\Models\Book\Book'])
-            ->selectRaw("SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as article_count", ['App\Models\Article\Article'])
-            ->selectRaw("SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as research_count", ['App\Models\Research\Research'])
-            ->selectRaw("SUM(CASE WHEN resourceable_type = ? THEN 1 ELSE 0 END) as digital_count", ['App\Models\DigitalResource\DigitalResource'])
-            ->groupBy('library_id')
-            ->get();
-
-        return ApiResponse::sendResponse('success', $resourceCounts);
-    }
-
-    public function resourceCountPerSubject()
-    {
-        $user = Auth::user();
-
-
-
-
-        $libraries = Cache::remember('library_subjects_' . $user->id, now()->addHour(), function () use ($user) {
-            return Library::query()
-                ->when(!Authorize::isSuperAdmin($user), function ($query) use ($user) {
-                    $query->where('id', $user->library_id);
-                })
-                ->with(['resources.subjects'])
-                ->get()
-                ->map(function ($library) {
-                    return [
-                        'library' => new LibraryResource($library),
-                        'subjects' => $library->resources->flatMap->subjects
-                            ->groupBy('id')
-                            ->map(fn($subjects) => [
-                                'subject' => new SubjectResource($subjects->first()),
-                                'total_resources' => count($subjects)
-                            ])
-                            ->values()
-                    ];
-                });
-        });
-
-        return ApiResponse::sendResponse('success', $libraries);
-    }
-
-    public function storeCurators(CuratorStoreRequest $request, string $resourceId)
+    public function storeCurators(CuratorStoreRequest $request, string $resourceId ,ResourceService $service)
     {
         $data = $request->validated();
-        // Authorize::hasPermission(Auth::user(),'RESOURCES',$data['library_id']);
         try {
             $resource = Resource::find($resourceId);
             if (!$resource) {
@@ -304,54 +181,7 @@ class ResourceController extends Controller
             }
             DB::beginTransaction();
 
-            $existingCurators = $resource->curators()->get()->keyBy('id');
-
-            $curatorsToInsert = [];
-
-            foreach ($data as $curatorData) {
-                $curatorId = $curatorData['id'] ?? null;
-
-                $curatorFields = [
-                    'name_ar' => $curatorData['name_ar'] ?? null,
-                    'name_ku' => $curatorData['name_ku'] ?? null,
-                    'name_en' => $curatorData['name_en'] ?? null,
-                    'type' => $curatorData['type'],
-                    'resource_id' => $resource->id,
-                ];
-                if ($curatorId && isset($existingCurators[$curatorId])) {
-                    $existingCurators[$curatorId]->update($curatorFields);
-                } else {
-                    $curatorsToInsert[] = $curatorFields;
-                }
-            }
-            if (!empty($curatorsToInsert)) {
-                $resource->curators()->insert($curatorsToInsert);
-
-                $resource->load('curators');
-                $insertedCurators = $resource->curators;
-            }
-
-            if ($resource->resourceable_type == Research::class || $resource->resourceable_type == Article::class) {
-                foreach ($data as $curatorData) {
-                    if (isset($curatorData['id']) && isset($curatorData['education_level'])) {
-                        info('entered');
-                        $curator = $resource->curators()->find($curatorData['id']);
-                        if ($curator) {
-                            $curator->education()?->updateOrCreate([], $curatorData['education_level']);
-                        }
-                    } elseif (isset($curatorData['education_level'])) {
-                        $newCurator = $insertedCurators->first(function ($curator) use ($curatorData) {
-                            return ($curator->name_ar === ($curatorData['name_ar'] ?? null)) ||
-                                ($curator->name_ku === ($curatorData['name_ku'] ?? null)) ||
-                                ($curator->name_en === ($curatorData['name_en'] ?? null));
-                        });
-
-                        if ($newCurator) {
-                            $newCurator->education()->create($curatorData['education_level']);
-                        }
-                    }
-                }
-            }
+            $service->attachCuratorToResource($resource,$data);
 
             DB::commit();
 
@@ -374,7 +204,7 @@ class ResourceController extends Controller
         return ApiResponse::sendResponse(__('messages.curator_delete'));
     }
 
-    public function storeMedia(MediaStoreRequest $request, string $resourceId)
+    public function storeMedia(MediaStoreRequest $request, string $resourceId,ResourceService $service)
     {
         $data = $request->validated();
         // Authorize::hasPermission(Auth::user(),'RESOURCES',$data['library_id']);
@@ -385,28 +215,7 @@ class ResourceController extends Controller
             }
             DB::beginTransaction();
 
-            $existingMedias = $resource->medias()->get()->keyBy('id');
-
-            $mediasToInsert = [];
-
-            foreach ($data as $mediaData) {
-                $mediaId = $mediaData['id'] ?? null;
-
-                $mediaFields = [
-                    'path' => $mediaData['path'],
-                    'type' => $mediaData['type'],
-                    'resource_id' => $resource->id,
-                ];
-                if ($mediaId && isset($existingMedias[$mediaId])) {
-                    $existingMedias[$mediaId]->update($mediaFields);
-                } else {
-                    $mediasToInsert[] = $mediaFields;
-                }
-            }
-
-            if (!empty($mediasToInsert)) {
-                $resource->medias()->insert($mediasToInsert);
-            }
+            $service->attachMediaToResource($resource,$data);
 
             DB::commit();
 
@@ -432,7 +241,6 @@ class ResourceController extends Controller
     public function storeSubject(StoreSubjectRequest $request, string $resourceId)
     {
         $data = $request->validated();
-        info($data);
         try {
             $resource = Resource::find($resourceId);
             if (!$resource) {
@@ -526,26 +334,5 @@ class ResourceController extends Controller
         return ApiResponse::sendPaginatedResponse(new PaginatingResource($resources, ResourceOverviewResource::class));
     }
 
-    public function topTen(TopTenRequest $request)
-    {
-
-        $data = $request->validated();
-
-        $circulations = Circulation::select(
-            'resources.title_en',
-            'resources.title_ku',
-            'resources.title_ar',
-            'resources.resourceable_type',
-            DB::raw('COUNT(circulations.id) as circulation_count')
-        )
-            ->join('resource_copies', 'circulations.resource_copy_id', '=', 'resource_copies.id')
-            ->join('resources', 'resource_copies.resource_id', '=', 'resources.id')
-            ->where('resources.resourceable_type', $this->mapResources[$data['type']])
-            ->groupBy('resources.id', 'resources.title_en', 'resources.title_ku', 'resources.title_ar', 'resources.resourceable_type')
-            ->orderByDesc('circulation_count')
-            ->limit(10)
-            ->get();
-
-        return ApiResponse::sendResponse(__('messages.resource_update'), $circulations);
-    }
+   
 }

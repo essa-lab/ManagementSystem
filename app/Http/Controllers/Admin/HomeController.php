@@ -3,22 +3,16 @@ namespace App\Http\Controllers\Admin;
 
 
 use App\Helper\ApiResponse;
-use App\Helper\Authorize;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\ActivityLogRequest;
 use App\Http\Requests\Home\AboutContentRequest;
 use App\Http\Requests\Home\AboutRequest;
 use App\Http\Requests\Home\HomeRequest;
-use App\Http\Resources\ActivityLogResource;
 use App\Http\Resources\Home\AboutContentResource;
 use App\Http\Resources\Home\AboutResource;
 use App\Http\Resources\Home\HomeResource;
-use App\Http\Resources\PaginatingResource;
-use App\Models\ActivityLog;
 use App\Models\Home\About;
 use App\Models\Home\AboutContent;
 use App\Models\Home\Home;
-use Illuminate\Support\Facades\Auth;
 
 
 class HomeController extends Controller
