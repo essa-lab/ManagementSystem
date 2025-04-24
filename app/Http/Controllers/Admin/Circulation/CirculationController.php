@@ -1,9 +1,6 @@
 <?php
 
 namespace App\Http\Controllers\Admin\Circulation;
-
-use App\Commands\RenewResourceCommand;
-use App\Commands\RequestResourceCommand;
 use App\Helper\ApiResponse;
 use App\Helper\Authorize;
 use App\Http\Controllers\Controller;
@@ -22,15 +19,13 @@ use App\Http\Resources\Resource\CheckPenaltyResource;
 use App\Http\Resources\Resource\CirculationResource;
 use App\Http\Resources\Resource\RenewRequestResource;
 use App\Http\Resources\Resource\TrackInventoryResource;
+use App\Http\State\BorrowingRequest;
 use App\Models\Library;
 use App\Models\Resource\Circulation;
 use App\Models\Resource\CirculationLog;
 use App\Models\Resource\PenaltyWaiver;
-use App\Models\Resource\ResourceCopy;
-use App\Models\Resource\ResourceSetting;
 use App\Queries\GetPatronCirculationsQuery;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -41,16 +36,14 @@ class CirculationController extends Controller
     public function requestResource(RequestBook $request)
     {
         $request->validated();
-
         try {
-            $command = new RequestResourceCommand(
-                $request->get('resource_id'),
-                auth('patron')->user()->id
-            );
-
-            $response = $command->execute();
-
-            return response()->json($response);
+            (new BorrowingRequest([
+                'resource_id' => $request->get('resource_id'),
+                'status' => 'pending'
+            ]))->process();
+            return response()->json([
+                'message' => __('messages.requested_successfully'),
+            ]);
         } catch (Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
         }
@@ -58,19 +51,16 @@ class CirculationController extends Controller
     public function renewResource(RenewBook $request)
     {
         $request->validated();
-
         try {
-            $circulation = Circulation::with('resourceCopy')->findOrFail($request->get('circulation_id'));
-
-            (new RenewResourceCommand($circulation))->execute();
-
+            (new BorrowingRequest([
+                'circulation_id' => $request->get('circulation_id'),
+                'status' => 'pending'
+            ]))->process();
             return response()->json(['message' => __('messages.renew_request')]);
         } catch (Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }
-
-
     public function circulationPatronLog(Request $request)
     {
         $patronId = auth('patron')->user()->id;
@@ -95,46 +85,14 @@ class CirculationController extends Controller
             ], 400);
         }
     }
-
     public function adminCheckIn(CheckInRequest $request)
     {
         $request->validated();
         try {
-            $resourceCopy = ResourceCopy::with('resource.resourceSetting')->where('barcode', $request->get('barcode'))->first();
-            $user = Auth::user();
-            if (!Authorize::isSuperAdmin($user) && $resourceCopy->resource->library_id != $user->library_id) {
-                return ApiResponse::sendError(__('messages.unathorized'));
-            }
-            if ($resourceCopy->status == 'available') {
-                return response()->json(['error' => __('messages.not_cheked_out')], 400);
-            }
-            $circulation = Circulation::where('resource_copy_id', $resourceCopy->id)
-                ->latest()
-                ->first();
-            if ($circulation->status == 'overdue' && !$circulation->penalties->last()->is_paid) {
-                return response()->json([
-                    'error' => __('messages.outstanding_payment'),
-                    'amount' => $circulation->penalties->last()->total_penalty_amount,
-                    'circulation_id' => $circulation->id,
-                ], 400);
-            }
-            $resourceCopy->status = 'available';
-            $resourceCopy->save();
-            $setting = ResourceSetting::where('resource_id', $resourceCopy->resource_id)->first();
-            $setting->availability = 1;
-            $setting->save();
-            $circulation->update([
-                'status' => 'returned',
-                'return_date' => now()
-            ]);
-
-            CirculationLog::create([
-                'circulation_id' => $circulation->id,
-                'action_date' => now(),
-                'status' => 'returned',
-                'action_by' => $user->id
-
-            ]);
+            (new BorrowingRequest([
+                'barcode' => $request->get('barcode'),
+                'status' => 'returned'
+            ]))->process();
             return response()->json([
                 'message' => __('messages.checkid_in'),
             ]);
@@ -148,59 +106,11 @@ class CirculationController extends Controller
     {
         $request->validated();
         try {
-            $resourceCopy = ResourceCopy::with('resource')->where('barcode', $request->get('barcode'))->first();
-
-            $user = Auth::user();
-
-            if (!Authorize::isSuperAdmin($user) && $resourceCopy->resource->library_id != $user->library_id) {
-                return ApiResponse::sendError(__('messages.unathorized'));
-            }
-
-            $patronId = $request->get('patron_id');
-
-            if ($resourceCopy->status === 'reserved') {
-                $circulation = Circulation::where('resource_copy_id', $resourceCopy->id)->latest()->first();
-                if ($request->get('patron_id') != $circulation->patron_id) {
-                    return response()->json(['error' => __('messages.resource_for_another_patron')], 400);
-                }
-            } else if ($resourceCopy->status !== 'available') {
-                return response()->json(['error' => __('messages.resource_not_available_to_circulate')], 400);
-            }
-            if ($resourceCopy->resource->resourceSetting->locked) {
-                return response()->json(['error' => __('messages.resource_no_borrow')], 400);
-            }
-            $resourceCopy->status = 'borrowed';
-            $resourceCopy->save();
-
-            $circulation = Circulation::where('resource_copy_id', $resourceCopy->id)
-                ->where('patron_id', $request->get('patron_id'))
-                ->where('status', 'pending')
-                ->first();
-
-            if ($circulation) {
-                $circulation->update([
-                    'status' => 'borrowed',
-                    'due_date' => Carbon::now()->addDays($resourceCopy->resource->resourceSetting->max_allowed_day),
-                    'borrow_date' => now(),
-                    'circulation_count' => 1,
-                ]);
-            } else {
-                $circulation = Circulation::create([
-                    'resource_copy_id' => $resourceCopy->id,
-                    'patron_id' => $request->get('patron_id'),
-                    'status' => 'borrowed',
-                    'due_date' => Carbon::now()->addDays($resourceCopy->resource->resourceSetting->max_allowed_day),
-                    'borrow_date' => now(),
-                    'circulation_count' => 1,
-                ]);
-            }
-
-            CirculationLog::create([
-                'circulation_id' => $circulation->id,
-                'action_date' => now(),
-                'status' => 'borrowed',
-                'action_by' => $user->id
-            ]);
+            (new BorrowingRequest([
+                'status'=> 'borrowed',
+                'patron_id' => $request->get('patron_id'),
+                'barcode' => $request->get('barcode'),
+            ]))->process();
             return response()->json([
                 'message' => __('messages.checked_out'),
             ]);
@@ -210,35 +120,15 @@ class CirculationController extends Controller
             ], 400);
         }
     }
-
-
+    
     public function changeCirculationStatus(ChangeCirculationRequest $request)
     {
         $request->validated();
         try {
-            $circulation = Circulation::find($request->get('circulation_id'));
-            $user = Auth::user();
-            if (!Authorize::isSuperAdmin($user) && $circulation->resourceCopy->resource->library_id != $user->library_id) {
-                return ApiResponse::sendError(__('messages.unathorized'));
-            }
-
-            if ($request->get('status') == 'request_rejected') {
-                $circulation->status = 'rejected';
-
-                $circulation->save();
-                $resourceCopy = ResourceCopy::find($circulation->resource_copy_id);
-                $resourceCopy->status = 'available';
-                $resourceCopy->save();
-            }
-
-            CirculationLog::create([
-                'circulation_id' => $circulation->id,
-                'action_date' => now(),
-                'status' => $request->get('status'),
-                'action_by' => $user->id
-            ]);
-
-
+            (new BorrowingRequest([
+                'status'=> $request->get('status'),
+                'circulation_id' => $request->get('circulation_id'),
+            ]))->process();
             return response()->json([
                 'message' => __('messages.resource_status_chenged'),
             ]);
@@ -253,36 +143,11 @@ class CirculationController extends Controller
     {
         $request->validated();
         try {
-            $circulation = Circulation::find($request->get('circulation_id'));
-            $user = Auth::user();
-            if (!Authorize::isSuperAdmin($user) && $circulation->resourceCopy->resource->library_id != $user->library_id) {
-                return ApiResponse::sendError(__('messages.unathorized'));
-            }
-
-            if ($circulation->status == 'overdue') {
-                return response()->json(['error' => __('messages.patron_has_penalty')], 400);
-            }
-
-            if ($request->get('status') == 'renew_accepted') {
-                $setting = ResourceSetting::where('resource_id', $circulation->resourceCopy->resource->id)->first();
-
-                if ($setting && $setting->allow_renewal && $setting->max_allowed_day > 0) {
-                    $circulation->due_date = Carbon::parse($circulation->due_date)->addDays((int)$request->get('duration'));
-                    $circulation->circulation_count += 1;
-
-                    $circulation->save();
-                } else {
-                    return response()->json([
-                        'error' =>  __('messages.circulation_cant_be_renew'),
-                    ], 400);
-                }
-            }
-            CirculationLog::create([
-                'circulation_id' => $circulation->id,
-                'action_date' => now(),
-                'status' => $request->get('status'),
-                'action_by' => $user->id
-            ]);
+            (new BorrowingRequest([
+                'status'=> $request->get('status'),
+                'circulation_id' => $request->get('circulation_id'),
+                'duration'=> $request->get('duration'),
+            ]))->process();
             return response()->json([
                 'message' => __('messages.resource_status_chenged'),
             ]);
@@ -352,7 +217,6 @@ class CirculationController extends Controller
             ], 400);
         }
     }
-
     public function waivePenalty(WaivePenaltyRequest $request)
     {
 
@@ -400,7 +264,6 @@ class CirculationController extends Controller
             ], 400);
         }
     }
-
     public function index(CirculationRequest $request)
     {
         //
@@ -432,13 +295,11 @@ class CirculationController extends Controller
         $circulation = $circulation->paginate($request->get('limit', 10));
         return ApiResponse::sendPaginatedResponse(new PaginatingResource($circulation, CirculationResource::class));
     }
-
     public function logIndex(string $id)
     {
         $circulation = CirculationLog::with('actionBy')->where('circulation_id', $id)->orderBy('id', 'desc')->get();
         return ApiResponse::sendResponse($circulation);
     }
-
     public function getResourceCopyCounts($libraryId = null)
     {
         $query = Library::query()
@@ -465,7 +326,6 @@ class CirculationController extends Controller
 
         return ApiResponse::sendResponse('Track Inventory', TrackInventoryResource::collection($query->get()));
     }
-
     public function checkPenalty()
     {
         $patronId = auth('patron')->user()->id;
@@ -531,10 +391,6 @@ class CirculationController extends Controller
             ], 400);
         }
     }
-
-
-
-
     public function showOverdue($id)
     {
 
@@ -550,7 +406,6 @@ class CirculationController extends Controller
 
         return ApiResponse::sendResponse('overdue circulation', new CirculationResource($circulation));
     }
-
     public function getRenewalRequest(RenewRequest $request)
     {
 

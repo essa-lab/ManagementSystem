@@ -6,29 +6,23 @@ use App\Http\State\BorrowingRequest;
 use App\Http\State\BorrowingState;
 use App\Models\Resource\Circulation;
 use App\Models\Resource\CirculationLog;
-use App\Models\Resource\ResourceCopy;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 
-class RejectedState implements BorrowingState {
+class RenewRejectedState implements BorrowingState {
     private Circulation $circulation;
     private $user;
     public function handle(BorrowingRequest $request) {
         $this->circulation = Circulation::find($request->getData()['circulation_id']);
         $this->user = Auth::user();
-
         $this->checkAuthority();
-        $this->circulation->status = 'rejected';
-        $this->circulation->save();
-        $resourceCopy = ResourceCopy::find($this->circulation->resource_copy_id);
-        $resourceCopy->status = 'available';
-        $resourceCopy->save();
+       
+        $this->createLog();
 
-       $this->createLog($this->circulation);
    
     }
     public function getState(): string {
-        return 'borrowed';
+        return 'renew_rejected';
     }
 
     private function checkAuthority()
@@ -37,13 +31,14 @@ class RejectedState implements BorrowingState {
             throw new Exception(__('messages.unathorized'));
         }
     }
-    private function createLog(Circulation $circulation)
+    private function createLog()
     {
         CirculationLog::create([
-            'circulation_id' => $circulation->id,
+            'circulation_id' => $this->circulation->id,
             'action_date' => now(),
-            'status' => 'request_rejected',
+            'status' => 'renew_rejected',
             'action_by' => $this->user->id
         ]);
     }
 }
+     

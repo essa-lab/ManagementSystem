@@ -1,32 +1,25 @@
 <?php
-namespace App\Commands;
+namespace App\Http\State\States;
 
+use App\Http\State\BorrowingRequest;
+use App\Http\State\BorrowingState;
 use App\Models\Resource\Circulation;
 use App\Models\Resource\CirculationLog;
 use App\Models\Resource\ResourceSetting;
 use Exception;
 
-class RenewResourceCommand
-{
-    private $circulation;
-
-    public function __construct(Circulation $circulation)
-    {
-        $this->circulation = $circulation;
-    }
-
-    /**
-     * Execute the renewal process.
-     *
-     * @throws Exception
-     */
-    public function execute()
-    {
+class RenewReuest implements BorrowingState {
+    private Circulation $circulation;
+    public function handle(BorrowingRequest $request) {
+        $this->circulation = Circulation::with('resourceCopy')->findOrFail($request->getData()['circulation_id']);
         $this->authorize();
         $this->validateRenewal();
         $this->logRenewalRequest();
     }
 
+    public function getState(): string {
+        return 'renew';
+    }
     private function authorize()
     {
         if (auth('patron')->user()->id !== $this->circulation->patron_id) {
